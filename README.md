@@ -33,6 +33,7 @@ the way EAGLE/DSpark data-prep expects. This repo captures what it actually take
 | [`scaffold/`](./scaffold/) | The DeepSpec extension for a Nemotron target: chat template, draft-config builder, `NemotronDSparkTrainer`, and `INTEGRATION.md`. |
 | [`configs/dspark_nemotron_nano.py`](./configs/dspark_nemotron_nano.py) | A worked DSpark config for a Nemotron-Nano target, modeled on DeepSpec's own configs. |
 | [`scripts/`](./scripts/) | Thin wrappers over DeepSpec's pipeline with the Nemotron target and NVIDIA-cloud-friendly defaults. |
+| [`BENCHMARKS.md`](./BENCHMARKS.md) | The reporting format and targets the next phase fills in once a draft is trained — acceptance, baseline-vs-draft speedup, and the standard DGX Spark tables. |
 
 ## Quickstart
 
