@@ -1,0 +1,11 @@
+# Normalize all text to LF in the repository (and on checkout), so shell scripts and Python
+# work on Linux regardless of the OS they were authored on.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.cff  text eol=lf
+LICENSE text eol=lf
+NOTICE  text eol=lf
