@@ -30,8 +30,13 @@ the way EAGLE/DSpark data-prep expects. This repo captures what it actually take
 | --- | --- |
 | [`GUIDE.md`](./GUIDE.md) | End-to-end recipe: data prep → target-cache → draft training → eval → serving, with NVIDIA-cloud notes. |
 | [`NEMOTRON-H-NOTES.md`](./NEMOTRON-H-NOTES.md) | Field notes on the Nemotron-H hybrid-architecture landmines that bite the data-prep / cache step, and the plumbing workarounds. |
-| [`scaffold/`](./scaffold/) | The DeepSpec extension for a Nemotron target: chat template, draft-config builder, `NemotronDSparkTrainer`, and `INTEGRATION.md`. |
-| [`configs/dspark_nemotron_nano.py`](./configs/dspark_nemotron_nano.py) | A worked DSpark config for a Nemotron-Nano target, modeled on DeepSpec's own configs. |
+| [`scaffold/`](./scaffold/) | The DeepSpec extension for a Nemotron target: chat template, draft-config builders, `NemotronDSparkTrainer` **and `NemotronEagle3Trainer`**, and `INTEGRATION.md`. |
+| [`configs/`](./configs/) | Worked configs for a Nemotron-Nano target — `dspark_nemotron_nano.py` and `eagle3_nemotron_nano.py` — modeled on DeepSpec's own configs. |
+
+**Two drafters, same target.** DeepSpec ships both DSpark and EAGLE-3; this recipe wires both for
+Nemotron so you can train either and benchmark them head-to-head ([`BENCHMARKS.md`](./BENCHMARKS.md)).
+DSpark adds a semi-autoregressive draft + load-aware verification; EAGLE-3 is the established
+autoregressive baseline. Which one wins on your target and workload is an empirical question.
 | [`scripts/`](./scripts/) | Thin wrappers over DeepSpec's pipeline with the Nemotron target and NVIDIA-cloud-friendly defaults. |
 | [`BENCHMARKS.md`](./BENCHMARKS.md) | The reporting format and targets the next phase fills in once a draft is trained — acceptance, baseline-vs-draft speedup, and the standard DGX Spark tables. |
 

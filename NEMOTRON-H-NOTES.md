@@ -74,6 +74,13 @@ PEFT / TRL stack. All generic upstream-interaction notes.
    accelerator reports free memory as `N/A`, `device_map="auto"` can mis-plan and try to
    CPU-offload. Pin placement explicitly, e.g. `device_map={"": 0}`.
 
+5. **EAGLE-3 loads the full target via the Auto classes.** DeepSpec's EAGLE-3 trainer calls
+   `AutoModelForCausalLM.from_pretrained` on the target to copy out (and freeze) its embeddings +
+   LM head. For Nemotron-H that load may need `trust_remote_code=True` (version-dependent) and
+   enough CPU RAM for the full bf16 target. It does **not** generate, so the broken generate/cache
+   path in §A does not bite here — it's a load-and-extract step only. (The DSpark path doesn't do
+   this; it's specific to EAGLE-3.)
+
 ---
 
 ## C. Choosing `target_layer_ids` for a Nemotron checkpoint

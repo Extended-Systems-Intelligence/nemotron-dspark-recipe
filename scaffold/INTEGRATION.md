@@ -51,6 +51,29 @@ configs/dspark_nemotron_nano.py  ->  $DEEPSPEC/config/dspark/dspark_nemotron_nan
 Then set the `SET-FOR-YOUR-CHECKPOINT` fields (target model id, `target_layer_ids`,
 `mask_token_id`).
 
+## 4b. (Optional) Add the EAGLE-3 variant
+
+DeepSpec ships EAGLE-3 alongside DSpark, and the Nemotron extension supports it with the same
+pattern, so you can train *either* drafter for Nemotron and benchmark them head-to-head. The
+chat template (step 1) is shared. Add:
+
+```
+scaffold/eagle3/__init__.py   ->  $DEEPSPEC/deepspec/modeling/eagle3/nemotron/__init__.py
+scaffold/eagle3/config.py     ->  $DEEPSPEC/deepspec/modeling/eagle3/nemotron/config.py
+```
+
+Append `NemotronEagle3Trainer` from `scaffold/eagle3_trainer.py` to
+`$DEEPSPEC/deepspec/trainer/eagle3_trainer.py` (or import it there) and export it from
+`deepspec/trainer/__init__.py` next to `Qwen3Eagle3Trainer` / `Gemma4Eagle3Trainer`. Then:
+
+```
+configs/eagle3_nemotron_nano.py  ->  $DEEPSPEC/config/eagle3/eagle3_nemotron_nano.py
+```
+
+> Note: the EAGLE-3 trainer loads the full target to harvest its embeddings + frozen LM head —
+> see the Nemotron-H caveat in `scaffold/eagle3_trainer.py` (you may need `trust_remote_code=True`
+> and enough CPU RAM for the target).
+
 ## 5. Run
 
 Point DeepSpec's data / train / eval scripts at the Nemotron config and a Nemotron target
