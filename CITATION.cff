@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this recipe or scaffold, please cite it."
+title: "nemotron-dspark-recipe: training a DSpark-class speculative-decoding draft model for NVIDIA Nemotron"
+authors:
+  - family-names: Neble
+    given-names: Rhyan J.
+    affiliation: Extended Systems Intelligence Corporation
+  - name: "Extended Systems Intelligence Corporation"
+repository-code: "https://github.com/Extended-Systems-Intelligence/nemotron-dspark-recipe"
+license: Apache-2.0
+year: 2026

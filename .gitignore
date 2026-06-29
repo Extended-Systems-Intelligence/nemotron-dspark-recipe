@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# DeepSpec artifacts (never commit caches/checkpoints — the target cache is enormous)
+checkpoints/
+tensorboard/
+*.jsonl
+train_datasets/
+.cache/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

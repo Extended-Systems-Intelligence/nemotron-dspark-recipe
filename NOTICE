@@ -1,0 +1,40 @@
+nemotron-dspark-recipe
+Copyright 2026 Extended Systems Intelligence Corporation
+
+This product is licensed under the Apache License, Version 2.0 (the "License");
+you may not use this work except in compliance with the License. See the LICENSE
+file for the full terms.
+
+------------------------------------------------------------------------------
+Third-party references and attributions
+------------------------------------------------------------------------------
+
+This repository references, builds on, and provides extension code for the
+following projects. It does not redistribute their source or weights; users
+obtain those from the upstream sources under the upstream licenses.
+
+1. DeepSpec — DeepSeek (MIT License)
+   https://github.com/deepseek-ai/DeepSpec
+   The scaffold in this repository targets DeepSpec's public extension interfaces
+   (chat-template registry, draft-config builders, trainer classes). DeepSpec in
+   turn adapts code from SpecForge (Apache-2.0) and DFlash (MIT).
+
+2. NVIDIA Nemotron models — NVIDIA Corporation
+   Nemotron model weights are distributed under the NVIDIA Nemotron Open Model
+   License. Any Nemotron weights, outputs, activation caches, or trained draft
+   models derived from a Nemotron target are subject to that license. Per its
+   terms, such derivatives must carry the notice:
+
+       "Licensed by NVIDIA Corporation under the NVIDIA Nemotron Model License."
+
+   See: https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/
+
+3. SpecForge — SGLang project (Apache-2.0)
+   https://github.com/sgl-project/SpecForge
+
+4. DFlash (MIT)
+   https://github.com/z-lab/dflash
+
+The names "NVIDIA", "Nemotron", "DeepSeek", "DeepSpec", "Qwen", and "Gemma" are
+the property of their respective owners and are used here for identification
+purposes only.
