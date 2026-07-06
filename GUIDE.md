@@ -41,6 +41,14 @@ cleanly:
   *node_rank*/*node_count*, so `WORLD_SIZE=1` is a single-node run regardless of GPU count.
 - **Cache storage:** provision a large scratch volume before §2 — see the storage warning.
 
+### Running on DGX Spark (GB10)
+
+If you are running on one or two **NVIDIA GB10 DGX Spark** boxes instead of a cloud H100 node,
+see [`TWO-SPARK-NOTES.md`](./TWO-SPARK-NOTES.md): how to parallelize the answer-regeneration
+step across two Sparks behind a least-connections load balancer, the GB10-specific serving
+gotchas (NVFP4 vs BF16, stuck unified-memory, wedged-server detection), and a sizing note on
+why a large target does not fit tensor-parallel across two GB10s.
+
 ---
 
 ## 1. Data preparation — prompts and regenerated answers

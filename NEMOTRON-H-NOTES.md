@@ -18,6 +18,32 @@ breaks.
 
 These bite the **target-cache** stage of [`GUIDE.md`](./GUIDE.md) §2.
 
+0. **Load the target with `attn_implementation="eager"` — not `"sdpa"`.** This is the first
+   thing that will stop you, and it is easy to miss because DeepSpec's data-prep, trainer, and
+   evaluator code paths all request SDPA by default. A Nemotron-H checkpoint raises at load:
+
+   ```
+   ValueError: NemotronHForCausalLM does not support an attention implementation through
+   torch.nn.functional.scaled_dot_product_attention (sdpa) yet. ... load your model with the
+   argument attn_implementation="eager" meanwhile.
+   ```
+
+   Pass `attn_implementation="eager"` on **every** `from_pretrained` that loads the Nemotron-H
+   *target* — the cache-generation load, and (if you also train/eval) the trainer's and
+   evaluator's target loads. Eager is the reference attention path (numerically fine, just
+   without the fused SDPA kernel); it is slower per forward, which compounds with the no-cache
+   recompute in point 4, so budget accordingly. The draft model itself (a plain transformer)
+   is unaffected and can keep SDPA.
+
+   **Related: `trust_remote_code=True` is mandatory, not optional, for the MoE checkpoints.**
+   Recent Nemotron-H releases ship as a mixture-of-experts variant whose modeling code lives in
+   the checkpoint (vendored `modeling_nemotron_h.py`), and it does **not** match the dense
+   `NemotronH` class bundled in `transformers`. A quick way to see the mismatch: the vendored
+   MoE checkpoint has thousands of weight tensors (per-expert), while the in-library dense class
+   materializes only a few hundred — load it without `trust_remote_code` and you either get the
+   wrong architecture or a key-mismatch error. Pass `trust_remote_code=True` on every target
+   `from_pretrained` (model **and** tokenizer). This applies to all the loads in point 0.
+
 1. **Don't rely on `generate()` to drive the forward pass.** On the hybrid checkpoints, the
    generation glue can be inconsistent: `prepare_inputs_for_generation` may hand back a
    `past_key_values` object while the model's `forward` expects `cache_params`, and
@@ -102,3 +128,46 @@ heuristic, once you know the layout:
 - Treat the choice as a tunable: re-run a small training + eval with a couple of tap sets and
   keep the one with the best accepted length. If you find a good set for a public Nemotron
   checkpoint, please contribute it back.
+
+---
+
+## D. Worked example: `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`
+
+Concrete, verified constants for one public checkpoint, so you don't have to rediscover them.
+Read these off the checkpoint's own `config.json` / tokenizer and confirm against your copy —
+they are facts about this specific model, not universal.
+
+**Architecture.** `NemotronHForCausalLM`, `model_type: nemotron_h`, MoE (per-expert weights →
+`trust_remote_code=True` required per §A.0), **52 layers** (`num_hidden_layers = 52`).
+
+**Where the attention layers are.** The hybrid layout is in `config.hybrid_override_pattern`.
+Reading it left to right (Mamba/MLP vs attention), the **attention** layers land at indices:
+
+```
+5, 12, 19, 26, 33, 42        # of 0..51
+```
+
+**`target_layer_ids` we used.** A five-tap low/mid/high spread biased onto attention positions:
+
+```python
+target_layer_ids = [5, 12, 26, 33, 42]   # all < 52; all on attention layers
+```
+
+> Note the placeholder in the shipped config assumes a ≥53-layer model — it is **not** valid
+> for this 52-layer checkpoint (an out-of-range index is rejected by DeepSpec's validator). The
+> set above is what we trained with; **accepted-length numbers are pending** (see
+> [`BENCHMARKS.md`](./BENCHMARKS.md)) — treat it as a working default, not a tuned optimum, and
+> contribute back if you find a better spread.
+
+**Other config fields you'll need:**
+
+- `mask_token_id` — use a reserved/unused token id from the tokenizer (this checkpoint has a
+  large block of `<SPECIAL_NN>` reserved tokens; we used one of them).
+- **Chat template** — this checkpoint uses the **ChatML** convention
+  (`<|im_start|>assistant\n … <|im_end|>`), **not** the `<extra_id_*>` role markers some earlier
+  Llama-Nemotron checkpoints use. Set the `nemotron` chat-template tokens to match, and verify
+  against `tokenizer.chat_template` before a real run (the scaffold's template strings are
+  placeholders — see [`scaffold/INTEGRATION.md`](./scaffold/INTEGRATION.md)).
+- **Data-gen mode** — regenerate answers in non-thinking mode
+  (`chat_template_kwargs={"enable_thinking": false}`) if you intend to serve non-thinking; a
+  reasoning trace otherwise consumes the token budget and can truncate the answer.

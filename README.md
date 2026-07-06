@@ -29,7 +29,8 @@ the way EAGLE/DSpark data-prep expects. This repo captures what it actually take
 | Path | What it is |
 | --- | --- |
 | [`GUIDE.md`](./GUIDE.md) | End-to-end recipe: data prep → target-cache → draft training → eval → serving, with NVIDIA-cloud notes. |
-| [`NEMOTRON-H-NOTES.md`](./NEMOTRON-H-NOTES.md) | Field notes on the Nemotron-H hybrid-architecture landmines that bite the data-prep / cache step, and the plumbing workarounds. |
+| [`NEMOTRON-H-NOTES.md`](./NEMOTRON-H-NOTES.md) | Field notes on the Nemotron-H hybrid-architecture landmines that bite the data-prep / cache step, and the plumbing workarounds — including the `attn_implementation="eager"` requirement and a worked example (layer taps, template, ids) for `Nemotron-3-Nano-30B-A3B`. |
+| [`TWO-SPARK-NOTES.md`](./TWO-SPARK-NOTES.md) | Running the data-gen step on one or two **GB10 DGX Sparks**: parallel target serving behind a least-connections load balancer, GB10 serving gotchas, and a 2×GB10 sizing note. |
 | [`scaffold/`](./scaffold/) | The DeepSpec extension for a Nemotron target: chat template, draft-config builders, `NemotronDSparkTrainer` **and `NemotronEagle3Trainer`**, and `INTEGRATION.md`. |
 | [`configs/`](./configs/) | Worked configs for a Nemotron-Nano target — `dspark_nemotron_nano.py` and `eagle3_nemotron_nano.py` — modeled on DeepSpec's own configs. |
 
