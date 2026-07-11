@@ -4,13 +4,15 @@ A community recipe, reference scaffold, and field notes for training a **DSpark-
 speculative-decoding draft model** against **NVIDIA Nemotron** targets using DeepSeek's
 open-source [DeepSpec](https://github.com/deepseek-ai/DeepSpec) framework.
 
-> **Status: reference implementation — validate before production use.**
+> **Status: recipe validated end-to-end — proof-of-recipe results, not a production checkpoint.**
 > DeepSpec ships first-class support for the **Qwen3** and **Gemma** target families only.
 > Nemotron is **not** supported upstream. This repository provides the missing extension
 > points (chat template, draft-config builder, trainer class, and a worked config) plus a
-> step-by-step recipe for running the pipeline on NVIDIA cloud GPUs. The scaffold is written
-> against DeepSpec's real interfaces but has not been benchmarked end-to-end; treat the
-> released artifacts as a starting point, not a finished checkpoint.
+> step-by-step recipe. The recipe now trains a Nemotron draft end-to-end on 2×GB10 and we
+> have a first head-to-head acceptance measurement (see [`BENCHMARKS.md`](./BENCHMARKS.md)):
+> **DSpark beats EAGLE-3 on every task at equal budget.** These are short, deliberately-small
+> **proof drafts** trained to settle the recipe and the architecture question — not production
+> models. Treat the released artifacts as a validated starting point, not a finished checkpoint.
 
 ## Why this exists
 
@@ -31,6 +33,7 @@ the way EAGLE/DSpark data-prep expects. This repo captures what it actually take
 | [`GUIDE.md`](./GUIDE.md) | End-to-end recipe: data prep → target-cache → draft training → eval → serving, with NVIDIA-cloud notes. |
 | [`NEMOTRON-H-NOTES.md`](./NEMOTRON-H-NOTES.md) | Field notes on the Nemotron-H hybrid-architecture landmines that bite the data-prep / cache step, and the plumbing workarounds — including the `attn_implementation="eager"` requirement and a worked example (layer taps, template, ids) for `Nemotron-3-Nano-30B-A3B`. |
 | [`TWO-SPARK-NOTES.md`](./TWO-SPARK-NOTES.md) | Running the data-gen step on one or two **GB10 DGX Sparks**: parallel target serving behind a least-connections load balancer, GB10 serving gotchas, and a 2×GB10 sizing note. |
+| [`GB10-TRAINING-NOTES.md`](./GB10-TRAINING-NOTES.md) | The **draft-training** step on GB10: the `flex_attention`→dense-`sdpa`-mask fix (required, and a silent-corruption trap for EAGLE-3 `ttt>1`), step-time decay on unified memory and how to stop it, frequent checkpointing + per-rank saves for 2-box training, and two eval-harness fixes for a Nemotron-H target. |
 | [`scaffold/`](./scaffold/) | The DeepSpec extension for a Nemotron target: chat template, draft-config builders, `NemotronDSparkTrainer` **and `NemotronEagle3Trainer`**, and `INTEGRATION.md`. |
 | [`configs/`](./configs/) | Worked configs for a Nemotron-Nano target — `dspark_nemotron_nano.py` and `eagle3_nemotron_nano.py` — modeled on DeepSpec's own configs. |
 
@@ -39,7 +42,7 @@ Nemotron so you can train either and benchmark them head-to-head ([`BENCHMARKS.m
 DSpark adds a semi-autoregressive draft + load-aware verification; EAGLE-3 is the established
 autoregressive baseline. Which one wins on your target and workload is an empirical question.
 | [`scripts/`](./scripts/) | Thin wrappers over DeepSpec's pipeline with the Nemotron target and NVIDIA-cloud-friendly defaults. |
-| [`BENCHMARKS.md`](./BENCHMARKS.md) | The reporting format and targets the next phase fills in once a draft is trained — acceptance, baseline-vs-draft speedup, and the standard DGX Spark tables. |
+| [`BENCHMARKS.md`](./BENCHMARKS.md) | First measured results — the DSpark-vs-EAGLE-3 acceptance head-to-head (proof run) — plus the reporting format for a full production run (serving tok/s, long-context, concurrency). |
 
 ## Quickstart
 
@@ -62,7 +65,9 @@ bash scripts/03_eval.sh
 
 Read [`GUIDE.md`](./GUIDE.md) before running anything — the target-cache stage produces a
 **very large** on-disk cache and the Nemotron-H target needs the workarounds in
-[`NEMOTRON-H-NOTES.md`](./NEMOTRON-H-NOTES.md).
+[`NEMOTRON-H-NOTES.md`](./NEMOTRON-H-NOTES.md). If you train on **GB10 / DGX Spark**, read
+[`GB10-TRAINING-NOTES.md`](./GB10-TRAINING-NOTES.md) first — the training step needs the
+`flex_attention`→dense-`sdpa`-mask fix or it won't run at usable speed.
 
 ## Licensing & attribution
 
