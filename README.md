@@ -83,3 +83,11 @@ Nemotron models are *"Licensed by NVIDIA Corporation under the NVIDIA Nemotron M
 Issues and PRs welcome — particularly benchmark results, corrected `target_layer_ids` for
 specific Nemotron checkpoints, and fixes to the draft-config dimension mapping. If you train a
 checkpoint with this recipe, please open an issue with your accepted-length numbers and setup.
+
+## Discussion
+
+Questions, results, and general discussion happen in the NVIDIA Developer Forums thread where this
+recipe was first shared (DGX Spark Projects):
+**[Open-source recipe + scaffold: training a DSpark-class speculative-decoding draft for Nemotron](https://forums.developer.nvidia.com/t/open-source-recipe-scaffold-training-a-dspark-class-speculative-decoding-draft-for-nemotron/374876)**.
+If you train a checkpoint or hit a GB10-specific snag, that thread and this repo's issue tracker are
+the best places to compare notes.
