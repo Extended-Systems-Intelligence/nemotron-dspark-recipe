@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "Maps DeepSpec's nine speculative-decoding eval benchmarks onto the three",
+    "workload buckets used in BENCHMARKS.md's headline table. Data, not code:",
+    "edit this to change how benchmarks roll up. The renderer averages each",
+    "bucket's member benchmarks (sample-weighted when sample counts are present,",
+    "otherwise a simple mean).",
+    "",
+    "The 'agentic' bucket is intentionally empty: none of DeepSpec's nine stock",
+    "benchmarks is a tool-calling/agentic workload. To populate that row, add an",
+    "acceptance_eval benchmark whose key is listed here (e.g. a tool-eval run) --",
+    "see benchmarks/README.md."
+  ],
+  "buckets": {
+    "code": ["humaneval", "mbpp", "livecodebench"],
+    "mixed": ["gsm8k", "math500", "aime25", "mt-bench", "alpaca", "arena-hard-v2"],
+    "agentic": []
+  },
+  "bucket_labels": {
+    "code": "Code",
+    "mixed": "Mixed",
+    "agentic": "Agentic / tool-calling"
+  }
+}

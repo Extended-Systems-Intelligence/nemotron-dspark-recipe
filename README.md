@@ -42,7 +42,8 @@ Nemotron so you can train either and benchmark them head-to-head ([`BENCHMARKS.m
 DSpark adds a semi-autoregressive draft + load-aware verification; EAGLE-3 is the established
 autoregressive baseline. Which one wins on your target and workload is an empirical question.
 | [`scripts/`](./scripts/) | Thin wrappers over DeepSpec's pipeline with the Nemotron target and NVIDIA-cloud-friendly defaults. |
-| [`BENCHMARKS.md`](./BENCHMARKS.md) | First measured results — the DSpark-vs-EAGLE-3 acceptance head-to-head (proof run) — plus the reporting format for a full production run (serving tok/s, long-context, concurrency). |
+| [`BENCHMARKS.md`](./BENCHMARKS.md) | The reporting format and auto-generated results tables (acceptance / accepted-length headline, serving tok/s, long-context, concurrency). No measured numbers yet — it's a template the harness fills in. |
+| [`benchmarks/`](./benchmarks/) | The results harness: schema, workload mapping, and the collect/render scripts that turn an eval run into the committed `BENCHMARKS.md` tables. See [`benchmarks/README.md`](./benchmarks/README.md). |
 
 ## Quickstart
 
@@ -57,10 +58,14 @@ python -m pip install -r requirements.txt
 #    - add NemotronDSparkTrainer to deepspec/trainer/
 #    - copy configs/dspark_nemotron_nano.py into config/dspark/
 
-# 3. Run the three stages (read GUIDE.md first — especially the storage warning)
+# 3. Run the stages (read GUIDE.md first — especially the storage warning)
 bash scripts/01_prepare_data.sh
 bash scripts/02_train.sh
-bash scripts/03_eval.sh
+bash scripts/03_eval.sh > eval_output.json
+
+# 4. Record the run into BENCHMARKS.md (see benchmarks/README.md)
+python scripts/collect_results.py --print-template > my_run.json   # fill it in
+bash scripts/04_report.sh my_run.json eval_output.json
 ```
 
 Read [`GUIDE.md`](./GUIDE.md) before running anything — the target-cache stage produces a
@@ -82,7 +87,8 @@ Nemotron models are *"Licensed by NVIDIA Corporation under the NVIDIA Nemotron M
 
 Issues and PRs welcome — particularly benchmark results, corrected `target_layer_ids` for
 specific Nemotron checkpoints, and fixes to the draft-config dimension mapping. If you train a
-checkpoint with this recipe, please open an issue with your accepted-length numbers and setup.
+checkpoint with this recipe, please open an issue with your accepted-length numbers and setup,
+or contribute a run via the results harness ([`benchmarks/README.md`](./benchmarks/README.md)).
 
 ## Discussion
 
