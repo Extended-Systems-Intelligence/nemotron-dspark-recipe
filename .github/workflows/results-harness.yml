@@ -24,12 +24,20 @@ permissions:
 
 jobs:
   selftest:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # The harness claims Python 3.9+; test the floor and current versions.
-        python-version: ["3.9", "3.11", "3.12"]
+        # 3.9 runs on ubuntu-22.04 because setup-python ships no 3.9 build for
+        # the current ubuntu-latest image (Ubuntu 26.04).
+        include:
+          - python-version: "3.9"
+            os: ubuntu-22.04
+          - python-version: "3.11"
+            os: ubuntu-latest
+          - python-version: "3.12"
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
