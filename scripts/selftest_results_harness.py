@@ -6,11 +6,15 @@
     python scripts/selftest_results_harness.py
 
 Exercises, with no weights or GPU:
-  - benchmarks/schema.json validates the synthetic example run,
-  - the DeepSpec eval adapter normalizes several realistic output shapes,
+  - benchmarks/schema.json validates the synthetic example and the committed runs,
+    and rejects out-of-range metrics (e.g. acceptance > 1, negative accepted length),
+  - the DeepSpec eval adapter normalizes realistic shapes and rejects samples-only,
+  - bucket aggregation falls back to a simple mean when sample counts are incomplete,
+  - the 0-context serving row requires an exact match (no back-fill from 128K),
   - collect_results.py produces a schema-valid results.json from a fake eval,
-  - render_benchmarks.py fills the BENCHMARKS.md tables with the right cells,
-  - a failing greedy-equivalence gate is flagged, and rendering is idempotent.
+  - render_benchmarks.py fills the serving tables + runs index for a serving run,
+    uses a drafter-neutral header, is idempotent, and rejects an invalid record,
+  - a failing greedy-equivalence gate is flagged.
 
 This validates the harness plumbing only — not training or benchmark correctness.
 """
@@ -41,39 +45,76 @@ def check(cond: bool, msg: str) -> None:
         _failures.append(msg)
 
 
-def test_schema_validates_example() -> None:
+def test_schema_validation() -> None:
     rec = rh.load_json(EXAMPLE)
-    errs = rh.validate_run(rec)
-    check(errs == [], f"schema validates the synthetic example (errors={errs})")
-    # A deliberately broken record must fail.
+    check(rh.validate_run(rec) == [], "schema validates the synthetic example")
+
+    # Committed real runs must validate too.
+    for name in ("2026-07-11-proof-dspark-block8-nano", "2026-07-11-proof-eagle3-ttt7-nano"):
+        p = os.path.join(rh.BENCHMARKS_DIR, name, "results.json")
+        if os.path.isfile(p):
+            check(rh.validate_run(rh.load_json(p)) == [], f"schema validates committed run {name}")
+
+    # Structural rejection.
     bad = copy.deepcopy(rec)
     bad["schema_version"] = "99"
     bad["config"].pop("drafter")
-    errs = rh.validate_run(bad)
-    check(len(errs) >= 2, f"schema rejects a broken record (errors={len(errs)})")
+    check(len(rh.validate_run(bad)) >= 2, "schema rejects a structurally broken record")
+
+    # Numeric-bound rejection: acceptance > 1 and negative accepted_length.
+    oob = copy.deepcopy(rec)
+    oob["acceptance_eval"]["benchmarks"]["humaneval"]["acceptance"] = 72
+    oob["acceptance_eval"]["benchmarks"]["humaneval"]["accepted_length"] = -1
+    errs = rh.validate_run(oob)
+    check(any("maximum" in e for e in errs), "schema rejects acceptance > 1 (would render 7200%)")
+    check(any("minimum" in e for e in errs), "schema rejects negative accepted_length")
 
 
 def test_deepspec_adapter() -> None:
-    # Dict keyed by benchmark, percentage-style acceptance (0-100) must normalize.
     d = {"humaneval": {"acceptance_rate": 72.0, "avg_accept_len": 3.4, "num_samples": 164}}
     out = rh.normalize_deepspec_eval(d)
     check(abs(out["humaneval"]["acceptance"] - 0.72) < 1e-9, "adapter normalizes 0-100 acceptance to fraction")
     check(out["humaneval"]["accepted_length"] == 3.4, "adapter reads accepted_length alias")
-    # List-of-records with a wrapper key and name field.
+
     lst = {"results": [{"task": "mbpp", "alpha": 0.70, "tau": 3.2, "n": 500}]}
     out = rh.normalize_deepspec_eval(lst)
     check("mbpp" in out and out["mbpp"]["acceptance"] == 0.70, "adapter reads list form + alpha/tau aliases")
-    # Unrecognized shape must raise, not silently drop.
-    raised = False
-    try:
-        rh.normalize_deepspec_eval({"humaneval": {"unknown_field": 1}})
-    except ValueError:
-        raised = True
-    check(raised, "adapter raises on output with no acceptance/length fields")
+
+    # No recognized metric at all -> raise.
+    for bad in ({"humaneval": {"unknown_field": 1}}, {"humaneval": {"num_samples": 164}}):
+        raised = False
+        try:
+            rh.normalize_deepspec_eval(bad)
+        except ValueError:
+            raised = True
+        check(raised, f"adapter raises when no acceptance/length metric is present ({list(bad['humaneval'])})")
+
+
+def test_weighted_mean_fallback() -> None:
+    # One benchmark has a sample count, the other does not: must be a simple mean (0.5),
+    # not a weighted mean that drops the unweighted measurement (0.2).
+    wl = {"buckets": {"code": ["a", "b"], "mixed": [], "agentic": []},
+          "bucket_labels": {"code": "Code", "mixed": "Mixed", "agentic": "Agentic"}}
+    rec = {"acceptance_eval": {"benchmarks": {
+        "a": {"acceptance": 0.2, "samples": 100},
+        "b": {"acceptance": 0.8},
+    }}}
+    acc = rh.bucket_stats(rec, wl)["code"].acceptance
+    check(acc is not None and abs(acc - 0.5) < 1e-9, f"incomplete sample weights fall back to simple mean (got {acc})")
+
+
+def test_zero_context_exact() -> None:
+    rec = {"serving": {"single_request": [
+        {"context": 131072, "prefill_tps": 1800.0, "decode_tps": 95.0, "ttft_ms": 900.0, "acceptance": 0.68},
+    ]}}
+    table = rh.render_single_request(rec)
+    zero_row = [ln for ln in table.splitlines() if ln.startswith("| 0 |")][0]
+    check(zero_row == "| 0 | — | — | — | — |", f"0-context row stays em-dash when only 128K measured ({zero_row})")
+    row_128k = [ln for ln in table.splitlines() if ln.startswith("| 128K |")][0]
+    check("95.0" in row_128k, "128K row is filled from the 128K measurement")
 
 
 def test_collect_cli(tmp: str) -> None:
-    # Fake DeepSpec eval output + meta -> results.json via the CLI.
     eval_json = os.path.join(tmp, "eval.json")
     with open(eval_json, "w") as fh:
         json.dump({
@@ -103,19 +144,23 @@ def test_collect_cli(tmp: str) -> None:
               "collected run has a Code-bucket acceptance")
 
 
-def test_render_populates(tmp: str) -> None:
-    # Copy the example under a normal (non-underscore) name so discover picks it up.
-    bench_dir = os.path.join(tmp, "render", "benchmarks")
-    os.makedirs(os.path.join(bench_dir, "example-run"), exist_ok=True)
-    rec = rh.load_json(EXAMPLE)
-    rec["run_id"] = "example-run"
-    with open(os.path.join(bench_dir, "example-run", "results.json"), "w") as fh:
+def _setup_render_dir(tmp: str, subdir: str, rec: dict):
+    bench_dir = os.path.join(tmp, subdir, "benchmarks")
+    os.makedirs(os.path.join(bench_dir, rec["run_id"]), exist_ok=True)
+    with open(os.path.join(bench_dir, rec["run_id"], "results.json"), "w") as fh:
         json.dump(rec, fh)
-    md = os.path.join(tmp, "BENCHMARKS.md")
+    md = os.path.join(tmp, subdir, "BENCHMARKS.md")
     with open(rh.BENCHMARKS_MD) as fh:
         template = fh.read()
     with open(md, "w") as fh:
         fh.write(template)
+    return bench_dir, md
+
+
+def test_render_populates(tmp: str) -> None:
+    rec = rh.load_json(EXAMPLE)  # synthetic, carries serving data
+    rec["run_id"] = "example-run"
+    bench_dir, md = _setup_render_dir(tmp, "render", rec)
 
     r = subprocess.run(
         [PY, RENDER, "--benchmarks-md", md, "--benchmarks-dir", bench_dir, "--include-synthetic"],
@@ -123,18 +168,30 @@ def test_render_populates(tmp: str) -> None:
     )
     check(r.returncode == 0, f"render_benchmarks.py exits 0 (stderr={r.stderr.strip()})")
     out = open(md).read()
-    for needle in ["2.57×", "2.05×", "| Code | 69% | 3.16", "`example-run`",
-                   "1 measured run", "✅ PASS", "61 /100"]:
+    for needle in ["2.57×", "| Code | 69% | 3.16", "`example-run`", "✅ PASS", "61 /100",
+                   "Decode t/s (draft)", "Mean accepted len"]:
         check(needle in out, f"rendered BENCHMARKS.md contains {needle!r}")
-    # Agentic row stays blank (no member benchmarks).
+    check("Decode t/s (DSpark)" not in out, "headline header is drafter-neutral (no hardcoded DSpark)")
     check("| Agentic / tool-calling | — | — | — | — | — |" in out, "Agentic row stays blank")
 
-    # Idempotent: a second render is a no-op.
     r2 = subprocess.run(
         [PY, RENDER, "--benchmarks-md", md, "--benchmarks-dir", bench_dir, "--include-synthetic", "--check"],
         capture_output=True, text=True,
     )
     check(r2.returncode == 0, "render is idempotent (--check passes after render)")
+
+
+def test_render_rejects_invalid(tmp: str) -> None:
+    rec = rh.load_json(EXAMPLE)
+    rec["run_id"] = "broken-run"
+    rec["synthetic"] = False
+    rec["schema_version"] = "99"          # invalid
+    rec["config"].pop("drafter")          # missing required
+    bench_dir, md = _setup_render_dir(tmp, "reject", rec)
+    r = subprocess.run([PY, RENDER, "--benchmarks-md", md, "--benchmarks-dir", bench_dir, "--check"],
+                       capture_output=True, text=True)
+    check(r.returncode != 0, "render rejects an invalid committed record with nonzero exit")
+    check("broken-run" in r.stderr, "render error names the offending artifact path")
 
 
 def test_greedy_fail_flag() -> None:
@@ -144,14 +201,24 @@ def test_greedy_fail_flag() -> None:
     check("FAIL" in out, "failing greedy-equivalence gate is flagged in the quality block")
 
 
+def test_repo_render_up_to_date() -> None:
+    # The committed BENCHMARKS.md must already be rendered from the committed runs.
+    r = subprocess.run([PY, RENDER, "--check"], capture_output=True, text=True)
+    check(r.returncode == 0, f"committed BENCHMARKS.md is up to date (stderr={r.stderr.strip()})")
+
+
 def main() -> int:
     print("results-harness selftest\n")
     with tempfile.TemporaryDirectory() as tmp:
-        test_schema_validates_example()
+        test_schema_validation()
         test_deepspec_adapter()
+        test_weighted_mean_fallback()
+        test_zero_context_exact()
         test_collect_cli(tmp)
         test_render_populates(tmp)
+        test_render_rejects_invalid(tmp)
         test_greedy_fail_flag()
+        test_repo_render_up_to_date()
     print()
     if _failures:
         print(f"{len(_failures)} check(s) FAILED")

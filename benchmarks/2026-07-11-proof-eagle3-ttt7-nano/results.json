@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "synthetic": false,
+  "run_id": "2026-07-11-proof-eagle3-ttt7-nano",
+  "date": "2026-07-11",
+  "config": {
+    "drafter": "eagle3",
+    "target_model": "nvidia/NVIDIA-Nemotron-3-Nano",
+    "target_checkpoint": "stock bf16 (no adapters, no modifications)",
+    "draft_config_file": "configs/eagle3_nemotron_nano.py",
+    "hardware": "2x DGX Spark (GB10, 128 GB unified)",
+    "speculative": {"ttt_length": 7, "draft_num_hidden_layers": 1},
+    "notes": "PROOF RUN (migrated from the published BENCHMARKS.md head-to-head, main@c66668c, 2026-07-11). EAGLE-3 sibling of the DSpark proof draft: same Nemotron-Nano target, same ~19K cache, same 74-step / 2-epoch budget, same eval config. Metric is mean accepted length (1 + mean accepted draft tokens; 7 tokens proposed per step). Aggregate first-token acceptance ~11% (vs DSpark ~21%). Eval: DeepSpec acceptance eval, 10-15 prompts per task, 128 max new tokens. Small samples -- trust the direction, not the third decimal. DSpark beat EAGLE-3 on every one of the nine tasks at this equal, small budget; whether that lead holds at full training is a separate (scaling) question. Per-task acceptance was not reported separately, so only accepted_length is recorded here."
+  },
+  "acceptance_eval": {
+    "source": "deepspec-eval (proof run, main@c66668c)",
+    "benchmarks": {
+      "gsm8k":         {"accepted_length": 1.140},
+      "math500":       {"accepted_length": 1.143},
+      "aime25":        {"accepted_length": 1.131},
+      "humaneval":     {"accepted_length": 1.147},
+      "mbpp":          {"accepted_length": 1.171},
+      "livecodebench": {"accepted_length": 1.128},
+      "mt-bench":      {"accepted_length": 1.161},
+      "alpaca":        {"accepted_length": 1.169},
+      "arena-hard-v2": {"accepted_length": 1.123}
+    }
+  }
+}

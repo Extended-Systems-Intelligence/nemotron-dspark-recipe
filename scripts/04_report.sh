@@ -4,17 +4,24 @@
 #
 # Stage 4: turn an eval run into committed benchmark results.
 # Collects one run into benchmarks/<run_id>/results.json and re-renders BENCHMARKS.md.
+# Run this from the recipe repo root (not the DeepSpec checkout).
 #
 # Usage:
-#   bash scripts/04_report.sh <meta.json> <deepspec_eval.json> [extra collect_results.py args...]
+#   bash scripts/04_report.sh <meta.json> <report.json> [extra collect_results.py args...]
 #
-#   <meta.json>           run metadata (see: scripts/collect_results.py --print-template)
-#   <deepspec_eval.json>  DeepSpec eval.py output captured from scripts/03_eval.sh
+#   <meta.json>    run metadata (see: scripts/collect_results.py --print-template)
+#   <report.json>  a JSON acceptance report, keyed by benchmark:
+#                  {"humaneval": {"accepted_length": 3.1, "acceptance": 0.78, "samples": 164}, ...}
+#
+# NOTE: DeepSpec's eval.py prints a human-readable table (and accept_length to TensorBoard) --
+# it does NOT emit JSON. Transcribe its per-task acceptance / accepted-length into <report.json>
+# first. The collector's --deepspec-eval adapter accepts that report (and common field aliases);
+# if your DeepSpec build does emit JSON, pass that file instead.
 #
 # Example:
 #   python scripts/collect_results.py --print-template > my_run.json && $EDITOR my_run.json
-#   bash scripts/03_eval.sh > eval_output.json        # capture your eval JSON
-#   bash scripts/04_report.sh my_run.json eval_output.json
+#   $EDITOR report.json                               # per-task numbers from the eval table
+#   bash scripts/04_report.sh my_run.json report.json
 #
 # Then commit benchmarks/<run_id>/results.json and the updated BENCHMARKS.md.
 set -euo pipefail

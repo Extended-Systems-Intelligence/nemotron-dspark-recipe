@@ -30,7 +30,7 @@
         "draft_checkpoint": {"type": "string"},
         "draft_config_file": {"type": "string"},
         "hardware": {"type": "string"},
-        "tp": {"type": "integer"},
+        "tp": {"type": "integer", "minimum": 1},
         "interconnect": {"type": "string"},
         "engine": {"type": "string"},
         "kv_cache_dtype": {"type": "string"},
@@ -47,9 +47,9 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "max_model_len": {"type": "integer"},
-            "max_num_seqs": {"type": "integer"},
-            "gpu_memory_utilization": {"type": "number"}
+            "max_model_len": {"type": "integer", "minimum": 1},
+            "max_num_seqs": {"type": "integer", "minimum": 1},
+            "gpu_memory_utilization": {"type": "number", "minimum": 0, "maximum": 1}
           }
         },
         "thinking": {"type": "boolean"},
@@ -80,9 +80,9 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {
-              "acceptance": {"type": "number", "description": "Draft-acceptance fraction in [0,1]."},
-              "accepted_length": {"type": "number", "description": "Mean tokens committed per verify step."},
-              "samples": {"type": "integer"}
+              "acceptance": {"type": "number", "minimum": 0, "maximum": 1, "description": "Draft-acceptance fraction in [0,1]. Already-normalized reports must use a fraction, not 0-100."},
+              "accepted_length": {"type": "number", "minimum": 0, "description": "Mean tokens committed per verify step (>= 1 in practice)."},
+              "samples": {"type": "integer", "minimum": 1}
             }
           }
         }
@@ -100,8 +100,8 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {
-              "decode_tps_no_draft": {"type": "number"},
-              "decode_tps_draft": {"type": "number"}
+              "decode_tps_no_draft": {"type": "number", "minimum": 0},
+              "decode_tps_draft": {"type": "number", "minimum": 0}
             }
           }
         },
@@ -112,11 +112,11 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {
-              "context": {"type": "integer"},
-              "prefill_tps": {"type": "number"},
-              "decode_tps": {"type": "number"},
-              "ttft_ms": {"type": "number"},
-              "acceptance": {"type": "number"}
+              "context": {"type": "integer", "minimum": 0},
+              "prefill_tps": {"type": "number", "minimum": 0},
+              "decode_tps": {"type": "number", "minimum": 0},
+              "ttft_ms": {"type": "number", "minimum": 0},
+              "acceptance": {"type": "number", "minimum": 0, "maximum": 1}
             }
           }
         },
@@ -126,11 +126,11 @@
             "type": "object",
             "additionalProperties": true,
             "properties": {
-              "concurrency": {"type": "integer"},
+              "concurrency": {"type": "integer", "minimum": 1},
               "depth": {"type": "string", "description": "e.g. 'd0', 'd4K'."},
-              "prefill_tps": {"type": "number"},
-              "decode_tps": {"type": "number"},
-              "ttft_ms": {"type": "number"}
+              "prefill_tps": {"type": "number", "minimum": 0},
+              "decode_tps": {"type": "number", "minimum": 0},
+              "ttft_ms": {"type": "number", "minimum": 0}
             }
           }
         }
@@ -145,16 +145,16 @@
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "score": {"type": "number"},
-            "by_category": {"type": "object", "additionalProperties": {"type": "number"}}
+            "score": {"type": "number", "minimum": 0, "maximum": 100},
+            "by_category": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100}}
           }
         },
         "ifeval": {
           "type": "object",
           "additionalProperties": true,
           "properties": {
-            "instruction_pct": {"type": "number"},
-            "prompt_pct": {"type": "number"}
+            "instruction_pct": {"type": "number", "minimum": 0, "maximum": 1},
+            "prompt_pct": {"type": "number", "minimum": 0, "maximum": 1}
           }
         }
       }

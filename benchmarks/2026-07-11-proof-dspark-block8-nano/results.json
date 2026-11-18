@@ -1,0 +1,29 @@
+{
+  "schema_version": "1",
+  "synthetic": false,
+  "run_id": "2026-07-11-proof-dspark-block8-nano",
+  "date": "2026-07-11",
+  "config": {
+    "drafter": "dspark",
+    "target_model": "nvidia/NVIDIA-Nemotron-3-Nano",
+    "target_checkpoint": "stock bf16 (no adapters, no modifications)",
+    "draft_config_file": "configs/dspark_nemotron_nano.py",
+    "hardware": "2x DGX Spark (GB10, 128 GB unified)",
+    "speculative": {"block_size": 8},
+    "notes": "PROOF RUN (migrated from the published BENCHMARKS.md head-to-head, main@c66668c, 2026-07-11). Small, deliberately-short proof draft: 74 optimizer steps / 2 epochs over a ~19K-sample target-hidden-state cache, global_batch_size=512, on 2xGB10 (requires the flex->dense-sdpa-mask fix and step-time-decay mitigations from GB10-TRAINING-NOTES.md). Metric is mean accepted length (1 + mean accepted draft tokens; 7 tokens proposed per step). Aggregate first-token acceptance ~21% (vs EAGLE-3 ~11%). Eval: DeepSpec acceptance eval, 10-15 prompts per task, 128 max new tokens. Small samples -- trust the direction (DSpark wins all nine tasks), not the third decimal. This is ~1-2% of a production training budget, NOT a production checkpoint. Per-task acceptance was not reported separately, so only accepted_length is recorded here."
+  },
+  "acceptance_eval": {
+    "source": "deepspec-eval (proof run, main@c66668c)",
+    "benchmarks": {
+      "gsm8k":         {"accepted_length": 1.247},
+      "math500":       {"accepted_length": 1.251},
+      "aime25":        {"accepted_length": 1.238},
+      "humaneval":     {"accepted_length": 1.237},
+      "mbpp":          {"accepted_length": 1.24},
+      "livecodebench": {"accepted_length": 1.24},
+      "mt-bench":      {"accepted_length": 1.26},
+      "alpaca":        {"accepted_length": 1.24},
+      "arena-hard-v2": {"accepted_length": 1.25}
+    }
+  }
+}

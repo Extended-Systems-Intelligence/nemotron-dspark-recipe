@@ -78,6 +78,15 @@ def _validate(value: Any, schema: Dict[str, Any], path: str, errors: List[str]) 
         if not any(_type_ok(value, t) for t in types):
             errors.append(f"{path}: expected type {schema['type']}, got {type(value).__name__}")
             return  # further checks assume the type held
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if "minimum" in schema and value < schema["minimum"]:
+            errors.append(f"{path}: {value} < minimum {schema['minimum']}")
+        if "maximum" in schema and value > schema["maximum"]:
+            errors.append(f"{path}: {value} > maximum {schema['maximum']}")
+        if "exclusiveMinimum" in schema and value <= schema["exclusiveMinimum"]:
+            errors.append(f"{path}: {value} <= exclusiveMinimum {schema['exclusiveMinimum']}")
+        if "exclusiveMaximum" in schema and value >= schema["exclusiveMaximum"]:
+            errors.append(f"{path}: {value} >= exclusiveMaximum {schema['exclusiveMaximum']}")
     if "pattern" in schema and isinstance(value, str):
         if re.search(schema["pattern"], value) is None:
             errors.append(f"{path}: {value!r} does not match /{schema['pattern']}/")
@@ -138,12 +147,20 @@ class Run:
         return bool(self.record.get("synthetic", False))
 
 
-def discover_runs(benchmarks_dir: str = BENCHMARKS_DIR, include_synthetic: bool = False) -> List[Run]:
+def discover_runs(benchmarks_dir: str = BENCHMARKS_DIR, include_synthetic: bool = False,
+                  validate: bool = False) -> List[Run]:
     """Load every benchmarks/<run>/results.json. Dirs whose name starts with
-    '_' or '.' are skipped (reserved for examples/scratch)."""
+    '_' or '.' are skipped (reserved for examples/scratch).
+
+    With validate=True, every discovered record is checked against the schema and
+    a ValueError is raised (listing the artifact path and each error) if any record
+    is invalid — so a hand-edited or directly contributed results.json cannot reach
+    the renderer, and `render --check` cannot pass on invalid committed data."""
     runs: List[Run] = []
     if not os.path.isdir(benchmarks_dir):
         return runs
+    schema = load_json(SCHEMA_PATH) if validate else None
+    problems: List[str] = []
     for name in sorted(os.listdir(benchmarks_dir)):
         if name.startswith("_") or name.startswith("."):
             continue
@@ -151,11 +168,41 @@ def discover_runs(benchmarks_dir: str = BENCHMARKS_DIR, include_synthetic: bool 
         if not os.path.isfile(results):
             continue
         run = Run(record=load_json(results), path=results)
+        if validate:
+            errs = validate_run(run.record, schema)
+            if errs:
+                rel = os.path.relpath(results, REPO_ROOT)
+                problems.extend(f"{rel}: {e}" for e in errs)
         if run.synthetic and not include_synthetic:
             continue
         runs.append(run)
+    if problems:
+        raise ValueError("invalid run record(s) found:\n  - " + "\n  - ".join(problems))
     runs.sort(key=lambda r: (r.date, r.run_id))
     return runs
+
+
+def mean_metric(record: Dict[str, Any], key: str) -> Optional[float]:
+    """Simple mean of a per-benchmark acceptance_eval metric across all benchmarks."""
+    benches = (record.get("acceptance_eval") or {}).get("benchmarks") or {}
+    vals = [float(b[key]) for b in benches.values()
+            if isinstance(b, dict) and b.get(key) is not None]
+    return sum(vals) / len(vals) if vals else None
+
+
+def has_serving(record: Dict[str, Any]) -> bool:
+    """True if the run carries any serving-throughput measurement."""
+    s = record.get("serving") or {}
+    if not isinstance(s, dict):
+        return False
+    if s.get("single_request") or s.get("concurrency"):
+        return True
+    headline = s.get("headline") or {}
+    for v in headline.values() if isinstance(headline, dict) else []:
+        if isinstance(v, dict) and (v.get("decode_tps_no_draft") is not None
+                                    or v.get("decode_tps_draft") is not None):
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -196,6 +243,12 @@ def _coerce_benchmark_entry(raw: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+def _has_metric(entry: Dict[str, Any]) -> bool:
+    """A benchmark entry counts only if it carries acceptance or accepted_length
+    (a samples count alone is not a measurement)."""
+    return entry.get("acceptance") is not None or entry.get("accepted_length") is not None
+
+
 def normalize_deepspec_eval(data: Any) -> Dict[str, Dict[str, Any]]:
     """Normalize parsed DeepSpec eval output into {benchmark: {acceptance, accepted_length, samples}}.
 
@@ -215,7 +268,7 @@ def normalize_deepspec_eval(data: Any) -> Dict[str, Dict[str, Any]]:
         for name, raw in data.items():
             if isinstance(raw, dict):
                 entry = _coerce_benchmark_entry(raw)
-                if entry:
+                if _has_metric(entry):
                     benchmarks[str(name)] = entry
     elif isinstance(data, list):
         for raw in data:
@@ -225,7 +278,7 @@ def normalize_deepspec_eval(data: Any) -> Dict[str, Dict[str, Any]]:
             if name is None:
                 continue
             entry = _coerce_benchmark_entry(raw)
-            if entry:
+            if _has_metric(entry):
                 benchmarks[str(name)] = entry
     else:
         raise ValueError("DeepSpec eval output must be a JSON object or array")
@@ -250,13 +303,15 @@ class BucketStat:
 
 
 def _weighted_mean(pairs: List[Tuple[float, float]]) -> Optional[float]:
-    """pairs of (value, weight). Equal weights if all weights are 0."""
+    """pairs of (value, weight). Sample-weighted only when EVERY pair has a
+    positive weight; otherwise fall back to a simple mean, so a benchmark missing
+    its sample count is never silently dropped from the average."""
     if not pairs:
         return None
-    total_w = sum(w for _, w in pairs)
-    if total_w <= 0:
-        return sum(v for v, _ in pairs) / len(pairs)
-    return sum(v * w for v, w in pairs) / total_w
+    if all(w > 0 for _, w in pairs):
+        total_w = sum(w for _, w in pairs)
+        return sum(v * w for v, w in pairs) / total_w
+    return sum(v for v, _ in pairs) / len(pairs)
 
 
 def bucket_stats(record: Dict[str, Any], workloads: Dict[str, Any]) -> Dict[str, BucketStat]:
@@ -321,7 +376,7 @@ def render_headline(record: Dict[str, Any], workloads: Dict[str, Any]) -> str:
     serving_headline = _g(record, "serving", "headline") or {}
     labels = workloads["bucket_labels"]
     lines = [
-        "| Workload | Acceptance | Accepted len | Decode t/s (no draft) | Decode t/s (DSpark) | Speedup |",
+        "| Workload | Acceptance | Accepted len | Decode t/s (no draft) | Decode t/s (draft) | Speedup |",
         "|---|---|---|---|---|---|",
     ]
     for bucket in workloads["buckets"]:
@@ -344,9 +399,14 @@ def _match_single_row(rows: List[Dict[str, Any]], target_tokens: int) -> Optiona
         ctx = r.get("context")
         if ctx is None:
             continue
-        # exact, or within 5% for the non-zero rows
+        # The 0-context baseline row requires an exact zero match, so a run that
+        # measured only 128K never back-fills the unmeasured 0 row (which would
+        # publish a fake baseline and hide the real decode-rate drop). Non-zero
+        # rows accept the nearest measurement within 5%.
         if target_tokens == 0:
-            delta = abs(int(ctx))
+            if int(ctx) != 0:
+                continue
+            delta = 0
         else:
             delta = abs(int(ctx) - target_tokens)
             if delta > 0.05 * target_tokens:
@@ -395,7 +455,10 @@ def render_concurrency(record: Dict[str, Any]) -> str:
 def render_quality(record: Dict[str, Any]) -> str:
     ge = record.get("greedy_equivalence") or {}
     if not ge.get("checked"):
-        ge_line = f"- **Greedy-equivalence check (required):** {EM_DASH} (not run)"
+        # Keep the descriptive placeholder until a run actually records the gate.
+        ge_line = ("- **Greedy-equivalence check (required):** draft-on output == draft-off output "
+                   "on a fixed prompt set\n  under greedy decoding. This must hold — if it doesn't, "
+                   "the spec-decode wiring is wrong.")
     elif ge.get("passed"):
         n = ge.get("prompts")
         suffix = f" over {n} prompts" if n else ""
@@ -405,9 +468,10 @@ def render_quality(record: Dict[str, Any]) -> str:
                    "wrong; the throughput numbers above are not trustworthy.**")
 
     tool = _g(record, "quality", "tool_eval_bench", "score")
-    tool_line = f"- **tool-eval-bench:** {EM_DASH if tool is None else f'{tool:.0f}'} /100"
+    tool_line = (f"- **tool-eval-bench:** {EM_DASH if tool is None else f'{tool:.0f}'} /100"
+                 + (" (with category breakdown)" if tool is None else ""))
     cats = _g(record, "quality", "tool_eval_bench", "by_category")
-    if isinstance(cats, dict) and cats:
+    if tool is not None and isinstance(cats, dict) and cats:
         parts = ", ".join(f"{k} {v:.0f}" for k, v in cats.items())
         tool_line += f" ({parts})"
 
@@ -454,24 +518,22 @@ def render_config(record: Dict[str, Any]) -> str:
 
 def render_runs_index(runs: List[Run], workloads: Dict[str, Any], selected_id: Optional[str]) -> str:
     if not runs:
-        return ("_No measured runs yet — this file is a template. Add one with "
-                "`scripts/collect_results.py` (see [benchmarks/README.md](benchmarks/README.md)), "
-                "then `scripts/render_benchmarks.py`._")
+        return "_No measured runs yet._"
     lines = [
-        "| Run | Date | Drafter | Code speedup | Mixed speedup | Greedy-eq |",
-        "|---|---|---|---|---|---|",
+        "| Run | Date | Drafter | Mean accepted len | Mean acceptance | Serving | Greedy-eq |",
+        "|---|---|---|---|---|---|---|",
     ]
     for run in runs:
         rec = run.record
-        sel = " ← shown below" if run.run_id == selected_id else ""
+        sel = " ← serving tables below" if run.run_id == selected_id else ""
         drafter = _g(rec, "config", "drafter") or EM_DASH
-        sh = _g(rec, "serving", "headline") or {}
-        code_sp = fmt_speedup(_g(sh, "code", "decode_tps_no_draft"), _g(sh, "code", "decode_tps_draft"))
-        mixed_sp = fmt_speedup(_g(sh, "mixed", "decode_tps_no_draft"), _g(sh, "mixed", "decode_tps_draft"))
+        acclen = fmt_num(mean_metric(rec, "accepted_length"), 3)
+        acc = fmt_pct(mean_metric(rec, "acceptance"))
+        serving = "✅" if has_serving(rec) else EM_DASH
         ge = rec.get("greedy_equivalence") or {}
         ge_s = EM_DASH if not ge.get("checked") else ("✅" if ge.get("passed") else "❌")
         lines.append(
-            f"| `{run.run_id}`{sel} | {run.date} | {drafter} | {code_sp} | {mixed_sp} | {ge_s} |"
+            f"| `{run.run_id}`{sel} | {run.date} | {drafter} | {acclen} | {acc} | {serving} | {ge_s} |"
         )
     return "\n".join(lines)
 
@@ -495,38 +557,55 @@ def inject_block(markdown: str, name: str, body: str) -> str:
     return f"{before}\n{body}\n{after}"
 
 
+def _has_markers(markdown: str, name: str) -> bool:
+    start, end = _marker_pair(name)
+    return start in markdown and end in markdown
+
+
 def render_benchmarks_md(markdown: str, runs: List[Run], workloads: Dict[str, Any],
                          selected_id: Optional[str] = None) -> str:
-    """Return BENCHMARKS.md content with every harness block re-rendered.
+    """Return BENCHMARKS.md content with each present harness block re-rendered.
 
-    Selected run (for the per-config tables) = the one whose run_id == selected_id,
-    else the most recent run. With no runs, blocks render as placeholders."""
+    Only blocks whose `<!-- harness:<name>:start/end -->` markers exist in the file
+    are touched; hand-written prose (including a hand-authored status/proof section)
+    is left alone. The serving tables and run configuration render the *selected*
+    run — an explicit `selected_id`, else the most recent run that actually carries
+    serving measurements, else none (placeholders). The runs index lists every run,
+    so acceptance-only runs (e.g. the migrated proof runs) still appear there even
+    when no run has serving numbers yet."""
     selected = None
     if runs:
         if selected_id:
             selected = next((r for r in runs if r.run_id == selected_id), None)
-        selected = selected or runs[-1]
+        if selected is None:
+            serving_runs = [r for r in runs if has_serving(r.record)]
+            selected = serving_runs[-1] if serving_runs else None
 
     sel_record = selected.record if selected else {"config": {}}
     sel_id = selected.run_id if selected else None
 
-    status = ("**Status: TEMPLATE — no measured numbers yet.**"
-              if not runs else
-              f"**Status: {len(runs)} measured run(s).** Tables below show run "
-              f"`{sel_id}`; re-render with `--run <id>` to show another.")
-
     blocks = {
-        "status": status,
-        "runs": render_runs_index(runs, workloads, sel_id),
-        "selected-heading": (f"### Run `{sel_id}`" if selected
-                             else "### Run _(none — placeholder)_"),
-        "config": render_config(sel_record),
-        "headline": render_headline(sel_record, workloads),
-        "single-request": render_single_request(sel_record),
-        "concurrency": render_concurrency(sel_record),
-        "quality": render_quality(sel_record),
+        "status": lambda: ("**Status: TEMPLATE — no measured numbers yet.**" if not runs
+                           else f"**Status: {len(runs)} measured run(s).**"),
+        "runs": lambda: render_runs_index(runs, workloads, sel_id),
+        "selected-heading": lambda: (f"### Run `{sel_id}`" if selected
+                                     else "### Run _(none — placeholder)_"),
+        "config": lambda: render_config(sel_record),
+        "headline": lambda: render_headline(sel_record, workloads),
+        "single-request": lambda: render_single_request(sel_record),
+        "concurrency": lambda: render_concurrency(sel_record),
+        "quality": lambda: render_quality(sel_record),
     }
+    # These blocks describe one serving run. Until a run with serving data exists,
+    # leave their hand-written placeholders untouched rather than blanking them to
+    # em-dashes — the runs index and status still render so proof runs are visible.
+    serving_blocks = {"selected-heading", "config", "headline", "single-request",
+                      "concurrency", "quality"}
     out = markdown
-    for name, body in blocks.items():
-        out = inject_block(out, name, body)
+    for name, render in blocks.items():
+        if not _has_markers(out, name):
+            continue
+        if name in serving_blocks and selected is None:
+            continue
+        out = inject_block(out, name, render())
     return out

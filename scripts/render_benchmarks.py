@@ -32,7 +32,12 @@ def main() -> int:
     args = ap.parse_args()
 
     workloads = rh.load_json(rh.WORKLOADS_PATH)
-    runs = rh.discover_runs(args.benchmarks_dir, include_synthetic=args.include_synthetic)
+    try:
+        runs = rh.discover_runs(args.benchmarks_dir, include_synthetic=args.include_synthetic,
+                                validate=True)
+    except ValueError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 2
     if args.run and not any(r.run_id == args.run for r in runs):
         sys.stderr.write(f"run {args.run!r} not found under {args.benchmarks_dir} "
                          "(is it synthetic? pass --include-synthetic)\n")

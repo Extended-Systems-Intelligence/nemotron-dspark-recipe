@@ -1,75 +1,128 @@
-# Benchmark format & targets
+# Benchmarks
 
-<!-- harness:status:start -->
-**Status: TEMPLATE — no measured numbers yet.**
-<!-- harness:status:end -->
+**Status: first measured results — proof-of-recipe, not production.** The recipe now trains a
+Nemotron draft end-to-end on 2×GB10 and we have a head-to-head acceptance measurement. Read the
+banner below before reading the numbers: these are **small, deliberately-short proof drafts**, and
+what they establish is that the recipe *works* and *which draft architecture wins at equal budget* —
+not a production-grade draft.
 
-This repo is a reference scaffold; this file defines the reporting format the next phase fills
-in once a Nemotron draft is trained. The table shapes follow the DGX Spark / GB10 community's
-reporting convention (see [Format credit](#format-credit)) so results are directly comparable to
-other Spark recipes.
-
-**The tables below are generated — do not hand-edit them.** Measured runs live under
-`benchmarks/<run_id>/results.json`; `scripts/render_benchmarks.py` renders them into the
-`<!-- harness:* -->` blocks here. To add a run see
-[`benchmarks/README.md`](benchmarks/README.md). The prose around the blocks is yours to edit.
+The serving-throughput tables further down are the reporting format for a full run and are **not yet
+filled** — we haven't run a production-scale training job or an end-to-end serving benchmark. We're
+not going to put invented numbers in them.
 
 ---
 
-## Why our table differs from a drop-in DSpark recipe
+## ⚠️ Read this before the numbers
 
-A serving recipe that uses a pre-trained drop-in draft can only report end throughput. We train
-the draft, so the metrics that show whether the work paid off are **acceptance rate** and the
-**speedup over the no-draft baseline** — reported per workload, because a workload-tuned draft
-is the whole point. That's the headline table below; the rest mirrors the standard format.
+Both drafts were trained for **74 optimizer steps (2 epochs)** over a **~19K-sample** target-hidden-
+state cache — a proof run to validate the recipe and settle the architecture question, not a trained
+model. Accepted length lands near **1.1–1.25**, which is low by design: a production draft targets
+**~2.5–4**. So:
+
+- These numbers answer **"does the recipe train end-to-end, and which architecture accepts more?"** —
+  not "is this draft good yet?" (It isn't; it's on the order of 1–2% of a production training budget.)
+- The comparison is at **equal, small budget**. Whether the winner keeps its lead at full training is
+  a separate question — architectures can scale differently. Confirm with a scaling sweep before
+  committing a large run to one architecture.
+- Sample sizes are small (10–15 prompts per task). Trust the **direction** (it's consistent across all
+  nine task types), not the third decimal.
 
 ---
 
-## Runs
+## Head-to-head: DSpark vs EAGLE-3 draft (proof run)
+
+Same Nemotron-Nano target, same 19K cache, same 74-step / 2-epoch budget, same eval config. Metric is
+**mean accepted length** — tokens committed per target verification (`1 + mean accepted draft tokens`;
+higher is better; both drafts propose 7 tokens per step).
+
+| Task | DSpark | EAGLE-3 | DSpark advantage |
+|---|---|---|---|
+| gsm8k | **1.247** | 1.140 | +0.107 |
+| math500 | **1.251** | 1.143 | +0.108 |
+| aime25 | **1.238** | 1.131 | +0.107 |
+| humaneval | **1.237** | 1.147 | +0.090 |
+| mbpp | **1.24** | 1.171 | +0.07 |
+| livecodebench | **1.24** | 1.128 | +0.11 |
+| mt-bench | **1.26** | 1.161 | +0.10 |
+| alpaca | **1.24** | 1.169 | +0.07 |
+| arena-hard-v2 | **1.25** | 1.123 | +0.13 |
+| **mean** | **≈1.245** | **≈1.146** | **+0.10 (~9%)** |
+
+**DSpark wins every task.** The driver is first-token acceptance: DSpark's draft correctly predicts
+the target's next token **~21%** of the time versus EAGLE-3's **~11%** — nearly 2×. Nine independent
+task types all agreeing is what makes the direction trustworthy despite the small samples.
+
+**Takeaway:** for a Nemotron-Nano target at this budget, the **semi-autoregressive DSpark draft** is
+the stronger architecture. That's the decision to carry into a full training run.
+
+---
+
+## What produced these numbers
+
+- **Target:** `nvidia/NVIDIA-Nemotron-3-Nano` class, bf16, stock (no adapters, no modifications).
+- **Drafts:** one DSpark draft (`block_size=8`, `draft_num_hidden_layers` per config) and one EAGLE-3
+  draft (`ttt_length=7`, 1 draft layer), each trained from the same cache with the configs under
+  [`configs/`](configs/).
+- **Training:** 74 steps / 2 epochs, `global_batch_size=512`, on 2×GB10 (the flex→dense-sdpa-mask fix
+  and the step-time-decay mitigations from [`GB10-TRAINING-NOTES.md`](GB10-TRAINING-NOTES.md) are
+  required to get here).
+- **Cache:** ~19K target-generation samples, hidden states at the tapped `target_layer_ids`.
+- **Eval:** DeepSpec acceptance eval, nine task types (gsm8k, math500, aime25, humaneval, mbpp,
+  livecodebench, mt-bench, alpaca, arena-hard-v2), 10–15 prompts each, 128 max new tokens. Acceptance
+  and accepted-length read from the eval's speculative stats. See
+  [`GB10-TRAINING-NOTES.md` §D](GB10-TRAINING-NOTES.md) for the two eval-harness fixes this needs on a
+  Nemotron-H target.
+
+---
+
+## Collected runs
+
+Every measured run under `benchmarks/<run_id>/results.json`, newest last. The proof runs above are
+migrated here as committed artifacts (accepted-length only — no serving throughput yet). This index
+and the serving tables further down are **generated** by the results harness
+([`benchmarks/README.md`](benchmarks/README.md)); don't hand-edit between the `<!-- harness:* -->`
+markers — run `python scripts/render_benchmarks.py` instead.
 
 <!-- harness:runs:start -->
-_No measured runs yet — this file is a template. Add one with `scripts/collect_results.py` (see [benchmarks/README.md](benchmarks/README.md)), then `scripts/render_benchmarks.py`._
+| Run | Date | Drafter | Mean accepted len | Mean acceptance | Serving | Greedy-eq |
+|---|---|---|---|---|---|---|
+| `2026-07-11-proof-dspark-block8-nano` | 2026-07-11 | dspark | 1.245 | — | — | — |
+| `2026-07-11-proof-eagle3-ttt7-nano` | 2026-07-11 | eagle3 | 1.146 | — | — | — |
 <!-- harness:runs:end -->
-
-<!-- harness:selected-heading:start -->
-### Run _(none — placeholder)_
-<!-- harness:selected-heading:end -->
-
-### Run configuration
-
-Numbers are only comparable when the setup matches — every table below belongs to this one run.
-
-<!-- harness:config:start -->
-- **Target model / checkpoint:** `—`
-- **Draft:** — draft — `—`
-- **Hardware:** —, TP=—, interconnect —
-- **Engine:** —
-- **KV cache dtype:** —
-- **Speculative config:** —, `block_size`=—, `num_draft_layers`=—, `target_layer_ids`=—
-- **Limits:** `max-model-len`=—, `max-num-seqs`=—, `gpu-memory-utilization`=—
-- **Mode:** —; — runs
-<!-- harness:config:end -->
 
 ---
 
-### Headline — draft vs no-draft (the point of training a draft)
+## Serving throughput (format for a full run — not yet measured)
+
+Everything below is the reporting shape a **production** run should fill: end-to-end decode tok/s with
+and without the draft, at length and under concurrency. A trained draft's serving speedup tracks its
+accepted length, so with proof-level acceptance (~1.25) the speedup would be small (~1.25×) and isn't
+worth publishing as a headline — that's why these are blank until a real training run lands. The
+tables are rendered from the most recent run that carries serving measurements; until one does, they
+stay em-dashes.
+
+### Run configuration (fill for every result set)
+
+<!-- harness:config:start -->
+- **Target model / checkpoint:** `nvidia/NVIDIA-Nemotron-3-Nano` (stock)
+- **Draft:** trained DSpark draft — checkpoint + the config under `configs/`
+- **Hardware:** N× DGX Spark (GB10, 128 GB unified), TP=_, interconnect _
+- **Engine:** vLLM / TensorRT-LLM version _
+- **KV cache dtype:** _ (e.g. fp8 / nvfp4)
+- **Speculative config:** DSpark, `block_size`=_, `num_draft_layers`=_, `target_layer_ids`=_
+- **Limits:** `max-model-len`=_, `max-num-seqs`=_, `gpu-memory-utilization`=_
+- **Mode:** thinking on/off; warmed runs
+<!-- harness:config:end -->
+
+### Headline — draft vs no-draft
 
 <!-- harness:headline:start -->
-| Workload | Acceptance | Accepted len | Decode t/s (no draft) | Decode t/s (DSpark) | Speedup |
+| Workload | Acceptance | Accepted len | Decode t/s (no draft) | Decode t/s (draft) | Speedup |
 |---|---|---|---|---|---|
 | Code | — | — | — | — | — |
 | Mixed | — | — | — | — | — |
 | Agentic / tool-calling | — | — | — | — | — |
 <!-- harness:headline:end -->
-
-> Acceptance is the engine's measured draft-acceptance fraction; accepted length is mean tokens
-> committed per verify step. Report both — they explain the tok/s, and they're the numbers a
-> trained draft can move that a drop-in draft cannot. The **Code** and **Mixed** rows roll up
-> DeepSpec's eval benchmarks (see [`benchmarks/workloads.json`](benchmarks/workloads.json)); the
-> **Agentic** row stays blank until you add a tool-calling benchmark, since none of DeepSpec's
-> nine stock benchmarks is agentic.
-
----
 
 ### Single request (pp_ / tg_)
 
@@ -83,11 +136,6 @@ Numbers are only comparable when the setup matches — every table below belongs
 | 1M | — | — | — | — |
 <!-- harness:single-request:end -->
 
-Note the decode-t/s drop from 0 → max context (a small drop is the win — it means the KV path
-holds up at length).
-
----
-
 ### Concurrency (pp_ / tg_)
 
 <!-- harness:concurrency:start -->
@@ -99,26 +147,22 @@ holds up at length).
 | c1 | d4K | — | — | — |
 <!-- harness:concurrency:end -->
 
-Report aggregate and per-stream tok/s. Note `max-model-len` is a per-request ceiling and
-`max-num-seqs` a concurrency cap over a **shared** KV pool — the real limit is
-`sum(live tokens) ≤ pool size`, not `concurrency × max-model-len`.
+Report aggregate and per-stream tok/s. `max-model-len` is a per-request ceiling and `max-num-seqs` a
+concurrency cap over a **shared** KV pool — the real limit is `sum(live tokens) ≤ pool size`.
 
 ---
 
-### Quality — verify lossless first, then score
+## Quality — verify lossless first, then score
 
-Speculative decoding is **lossless with respect to the target**, so the only quality claim to
-make is that it matches the no-draft baseline. Verify that, then report task scores for context:
+Speculative decoding is **lossless with respect to the target**, so the only quality claim to make is
+that it matches the no-draft baseline. Verify that, then report task scores for context:
 
 <!-- harness:quality:start -->
-- **Greedy-equivalence check (required):** — (not run)
-- **tool-eval-bench:** — /100
+- **Greedy-equivalence check (required):** draft-on output == draft-off output on a fixed prompt set
+  under greedy decoding. This must hold — if it doesn't, the spec-decode wiring is wrong.
+- **tool-eval-bench:** — /100 (with category breakdown)
 - **IFEval:** instruction-level — / prompt-level —
 <!-- harness:quality:end -->
-
-The greedy-equivalence check — draft-on output == draft-off output on a fixed prompt set under
-greedy decoding — **must** hold. If it doesn't, the spec-decode wiring is wrong and every speed
-number above is meaningless; the renderer flags a failing gate in red.
 
 ---
 
@@ -127,14 +171,14 @@ number above is meaningless; the renderer flags a failing gate in red.
 - Warmed runs (discard the first), thinking-off unless the row says otherwise.
 - Fixed prompt/generation sizes per table (state `pp`/`tg`).
 - Acceptance and accepted length read from the serving engine's speculative-decoding stats.
-- Long-context rows use a real retrieval/needle probe, not just a token count, so the number
-  reflects correctness at length, not only speed.
+- Long-context rows use a real retrieval/needle probe, not just a token count.
+- Drop measured runs under `benchmarks/<date>-<config>/` and summarize them here.
 
 ---
 
 ## Format credit
 
-The table structure here follows the DGX Spark / GB10 community's numbers-first benchmark
-reporting convention — e.g. the DeepSeek-V4-Flash-DSpark and Aiden-recipe write-ups on the
-NVIDIA Developer Forums. Thanks to that community for setting the bar; the extensions
-(acceptance / accepted-length / baseline-vs-draft headline) are specific to a trained draft.
+The serving-table structure follows the DGX Spark / GB10 community's numbers-first benchmark reporting
+convention — e.g. the DeepSeek-V4-Flash-DSpark and Aiden-recipe write-ups on the NVIDIA Developer
+Forums. Thanks to that community for setting the bar; the acceptance / accepted-length / head-to-head
+extensions are specific to a trained draft.
