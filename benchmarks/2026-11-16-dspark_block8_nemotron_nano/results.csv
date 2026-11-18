@@ -1,0 +1,15 @@
+# Head-to-head acceptance: DSpark vs EAGLE-3 draft, Nemotron-Nano target.
+# Proof run: 74 optimizer steps / 2 epochs, ~19K-sample target-hidden-state cache, 2xGB10.
+# Metric = mean accepted length (tokens committed per target verification; 1 + mean accepted
+# draft tokens; higher is better). Both drafts propose 7 tokens per step. 10-15 prompts/task.
+# Source of record: ../../BENCHMARKS.md (head-to-head table). Keep this file in sync with it.
+task,dspark_accepted_len,eagle3_accepted_len,dspark_advantage
+gsm8k,1.247,1.140,0.107
+math500,1.251,1.143,0.108
+aime25,1.238,1.131,0.107
+humaneval,1.237,1.147,0.090
+mbpp,1.24,1.171,0.07
+livecodebench,1.24,1.128,0.11
+mt-bench,1.26,1.161,0.10
+alpaca,1.24,1.169,0.07
+arena-hard-v2,1.25,1.123,0.13
