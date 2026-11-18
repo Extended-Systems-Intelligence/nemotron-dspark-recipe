@@ -481,8 +481,24 @@ def render_quality(record: Dict[str, Any]) -> str:
     return "\n".join([ge_line, tool_line, if_line])
 
 
+# Canonical placeholder for the serving run-configuration block when no run is
+# selected. Kept verbatim in BENCHMARKS.md so render is a no-op in the no-run state.
+CONFIG_PLACEHOLDER = "\n".join([
+    "- **Target model / checkpoint:** `nvidia/NVIDIA-Nemotron-3-Nano` (stock)",
+    "- **Draft:** trained DSpark draft — checkpoint + the config under `configs/`",
+    "- **Hardware:** N× DGX Spark (GB10, 128 GB unified), TP=_, interconnect _",
+    "- **Engine:** vLLM / TensorRT-LLM version _",
+    "- **KV cache dtype:** _ (e.g. fp8 / nvfp4)",
+    "- **Speculative config:** DSpark, `block_size`=_, `num_draft_layers`=_, `target_layer_ids`=_",
+    "- **Limits:** `max-model-len`=_, `max-num-seqs`=_, `gpu-memory-utilization`=_",
+    "- **Mode:** thinking on/off; warmed runs",
+])
+
+
 def render_config(record: Dict[str, Any]) -> str:
-    c = record.get("config", {})
+    c = record.get("config") or {}
+    if not c:
+        return CONFIG_PLACEHOLDER  # no run selected -> canonical placeholder
     spec = c.get("speculative", {}) or {}
     lim = c.get("limits", {}) or {}
 
@@ -496,6 +512,20 @@ def render_config(record: Dict[str, Any]) -> str:
     warmed = c.get("warmed")
     warmed_s = "warmed" if warmed else ("cold" if warmed is False else EM_DASH)
     gmu = lim.get("gpu_memory_utilization")
+
+    # The DSpark and EAGLE-3 drafters have different speculative parameters; show each
+    # drafter's own fields so an EAGLE-3 run keeps its ttt_length / draft layers.
+    if c.get("drafter") == "eagle3":
+        spec_line = ("- **Speculative config:** eagle3, "
+                     f"`ttt_length`={val(spec.get('ttt_length'))}, "
+                     f"`draft_num_hidden_layers`={val(spec.get('draft_num_hidden_layers'))}, "
+                     f"`target_layer_ids`={tli_s}")
+    else:
+        spec_line = (f"- **Speculative config:** {val(c.get('drafter'))}, "
+                     f"`block_size`={val(spec.get('block_size'))}, "
+                     f"`num_draft_layers`={val(spec.get('num_draft_layers'))}, "
+                     f"`target_layer_ids`={tli_s}")
+
     return "\n".join([
         f"- **Target model / checkpoint:** `{val(c.get('target_model'))}`"
         + (f" ({c['target_checkpoint']})" if c.get("target_checkpoint") else ""),
@@ -505,10 +535,7 @@ def render_config(record: Dict[str, Any]) -> str:
         f"interconnect {val(c.get('interconnect'))}",
         f"- **Engine:** {val(c.get('engine'))}",
         f"- **KV cache dtype:** {val(c.get('kv_cache_dtype'))}",
-        f"- **Speculative config:** {val(c.get('drafter'))}, "
-        f"`block_size`={val(spec.get('block_size'))}, "
-        f"`num_draft_layers`={val(spec.get('num_draft_layers'))}, "
-        f"`target_layer_ids`={tli_s}",
+        spec_line,
         f"- **Limits:** `max-model-len`={val(lim.get('max_model_len'))}, "
         f"`max-num-seqs`={val(lim.get('max_num_seqs'))}, "
         f"`gpu-memory-utilization`={val(gmu)}",
@@ -596,16 +623,13 @@ def render_benchmarks_md(markdown: str, runs: List[Run], workloads: Dict[str, An
         "concurrency": lambda: render_concurrency(sel_record),
         "quality": lambda: render_quality(sel_record),
     }
-    # These blocks describe one serving run. Until a run with serving data exists,
-    # leave their hand-written placeholders untouched rather than blanking them to
-    # em-dashes — the runs index and status still render so proof runs are visible.
-    serving_blocks = {"selected-heading", "config", "headline", "single-request",
-                      "concurrency", "quality"}
+    # Every present block is always re-rendered. When no run is selected the
+    # serving blocks render their canonical placeholders (config -> CONFIG_PLACEHOLDER,
+    # tables -> em-dashes, quality -> the descriptive gate text), so a run that is
+    # deleted, marked synthetic, or loses its serving data can never leave stale
+    # published numbers behind that `--check` would then accept.
     out = markdown
     for name, render in blocks.items():
-        if not _has_markers(out, name):
-            continue
-        if name in serving_blocks and selected is None:
-            continue
-        out = inject_block(out, name, render())
+        if _has_markers(out, name):
+            out = inject_block(out, name, render())
     return out

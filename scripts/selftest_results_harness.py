@@ -194,6 +194,34 @@ def test_render_rejects_invalid(tmp: str) -> None:
     check("broken-run" in r.stderr, "render error names the offending artifact path")
 
 
+def test_eagle3_config_fields() -> None:
+    rec = {"config": {"drafter": "eagle3",
+                      "speculative": {"ttt_length": 7, "draft_num_hidden_layers": 1}}}
+    out = rh.render_config(rec)
+    check("`ttt_length`=7" in out, "EAGLE-3 config renders ttt_length")
+    check("`draft_num_hidden_layers`=1" in out, "EAGLE-3 config renders draft_num_hidden_layers")
+    check("block_size" not in out, "EAGLE-3 config omits DSpark-only block_size")
+
+
+def test_stale_serving_reset(tmp: str) -> None:
+    # A serving run fills the tables; once it is gone, re-render must reset them to
+    # placeholders rather than leave stale published numbers.
+    rec = rh.load_json(EXAMPLE)
+    rec["run_id"] = "temp-serving"
+    bench_dir, md = _setup_render_dir(tmp, "stale", rec)
+    subprocess.run([PY, RENDER, "--benchmarks-md", md, "--benchmarks-dir", bench_dir,
+                    "--include-synthetic"], capture_output=True, text=True)
+    check("108.0" in open(md).read(), "serving run fills the decode-t/s cells")
+
+    os.remove(os.path.join(bench_dir, "temp-serving", "results.json"))
+    r = subprocess.run([PY, RENDER, "--benchmarks-md", md, "--benchmarks-dir", bench_dir,
+                        "--include-synthetic"], capture_output=True, text=True)
+    out = open(md).read()
+    check(r.returncode == 0, "re-render after run removal succeeds")
+    check("108.0" not in out, "stale serving numbers are cleared when the run is gone")
+    check("`block_size`=_" in out, "config block resets to the canonical placeholder")
+
+
 def test_greedy_fail_flag() -> None:
     rec = rh.load_json(EXAMPLE)
     rec["greedy_equivalence"] = {"checked": True, "passed": False}
@@ -217,6 +245,8 @@ def main() -> int:
         test_collect_cli(tmp)
         test_render_populates(tmp)
         test_render_rejects_invalid(tmp)
+        test_eagle3_config_fields()
+        test_stale_serving_reset(tmp)
         test_greedy_fail_flag()
         test_repo_render_up_to_date()
     print()
