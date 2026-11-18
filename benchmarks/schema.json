@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/extended-systems-intelligence/nemotron-dspark-recipe/benchmarks/schema.json",
+  "title": "Nemotron DSpark benchmark run record",
+  "description": "One measured run of a trained DSpark/EAGLE-3 draft against a Nemotron target. Every metric is optional: the renderer prints an em-dash for anything missing, so a partial run (e.g. acceptance-only, no serving throughput) is valid. Validated by scripts/results_harness.py (stdlib only; this file is the human-readable contract).",
+  "type": "object",
+  "required": ["schema_version", "run_id", "date", "config"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {"const": "1"},
+    "synthetic": {
+      "type": "boolean",
+      "description": "True marks fabricated/example data. The renderer excludes synthetic runs from BENCHMARKS.md unless --include-synthetic is passed. Never set false on data you did not measure.",
+      "default": false
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "description": "Unique id; also the directory name under benchmarks/. Convention: <YYYY-MM-DD>-<drafter>-<config>."
+    },
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "config": {
+      "type": "object",
+      "required": ["drafter", "target_model"],
+      "additionalProperties": true,
+      "properties": {
+        "drafter": {"enum": ["dspark", "eagle3"]},
+        "target_model": {"type": "string"},
+        "target_checkpoint": {"type": "string"},
+        "draft_checkpoint": {"type": "string"},
+        "draft_config_file": {"type": "string"},
+        "hardware": {"type": "string"},
+        "tp": {"type": "integer", "minimum": 1},
+        "interconnect": {"type": "string"},
+        "engine": {"type": "string"},
+        "kv_cache_dtype": {"type": "string"},
+        "speculative": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "block_size": {"type": "integer"},
+            "num_draft_layers": {"type": "integer"},
+            "target_layer_ids": {"type": "array", "items": {"type": "integer"}}
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "max_model_len": {"type": "integer", "minimum": 1},
+            "max_num_seqs": {"type": "integer", "minimum": 1},
+            "gpu_memory_utilization": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "thinking": {"type": "boolean"},
+        "warmed": {"type": "boolean"},
+        "notes": {"type": "string"}
+      }
+    },
+    "greedy_equivalence": {
+      "description": "The required quality gate: draft-on output must equal draft-off output under greedy decoding. If checked and not passed, the renderer flags the run loudly -- a failing gate means the spec-decode wiring is wrong and the speed numbers are meaningless.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "checked": {"type": "boolean"},
+        "passed": {"type": "boolean"},
+        "prompts": {"type": "integer"},
+        "notes": {"type": "string"}
+      }
+    },
+    "acceptance_eval": {
+      "description": "Per-benchmark acceptance + accepted-length, typically from DeepSpec's eval.py. Keyed by benchmark name; benchmarks/workloads.json maps these onto the headline workload buckets.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "source": {"type": "string"},
+        "benchmarks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "acceptance": {"type": "number", "minimum": 0, "maximum": 1, "description": "Draft-acceptance fraction in [0,1]. Already-normalized reports must use a fraction, not 0-100."},
+              "accepted_length": {"type": "number", "minimum": 0, "description": "Mean tokens committed per verify step (>= 1 in practice)."},
+              "samples": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "serving": {
+      "description": "Throughput measured on a serving engine. The acceptance_eval section explains WHY the draft helps; this section is the wall-clock payoff. All optional.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "headline": {
+          "description": "Per-workload decode throughput, no-draft baseline vs DSpark draft. Keys are workload bucket ids from workloads.json (code/mixed/agentic).",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "decode_tps_no_draft": {"type": "number", "minimum": 0},
+              "decode_tps_draft": {"type": "number", "minimum": 0}
+            }
+          }
+        },
+        "single_request": {
+          "description": "One row per context length. 'context' is tokens (0 means no prior context); the renderer bins these to the 0/128K/256K/512K/1M rows.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "context": {"type": "integer", "minimum": 0},
+              "prefill_tps": {"type": "number", "minimum": 0},
+              "decode_tps": {"type": "number", "minimum": 0},
+              "ttft_ms": {"type": "number", "minimum": 0},
+              "acceptance": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          }
+        },
+        "concurrency": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "concurrency": {"type": "integer", "minimum": 1},
+              "depth": {"type": "string", "description": "e.g. 'd0', 'd4K'."},
+              "prefill_tps": {"type": "number", "minimum": 0},
+              "decode_tps": {"type": "number", "minimum": 0},
+              "ttft_ms": {"type": "number", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "quality": {
+      "description": "Task scores for context. Only meaningful once greedy-equivalence passes -- spec decoding is lossless, so these should match the no-draft baseline.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "tool_eval_bench": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "score": {"type": "number", "minimum": 0, "maximum": 100},
+            "by_category": {"type": "object", "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100}}
+          }
+        },
+        "ifeval": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "instruction_pct": {"type": "number", "minimum": 0, "maximum": 1},
+            "prompt_pct": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        }
+      }
+    }
+  }
+}

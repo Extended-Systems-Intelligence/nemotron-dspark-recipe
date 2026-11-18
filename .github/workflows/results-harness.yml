@@ -1,0 +1,53 @@
+# Copyright 2026 Extended Systems Intelligence Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# CI for the benchmark results harness (scripts/ + benchmarks/). The harness is
+# stdlib-only and needs no GPU, so this runs fast on a stock runner.
+name: results-harness
+
+on:
+  push:
+    paths:
+      - "scripts/**"
+      - "benchmarks/**"
+      - "BENCHMARKS.md"
+      - ".github/workflows/results-harness.yml"
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "benchmarks/**"
+      - "BENCHMARKS.md"
+      - ".github/workflows/results-harness.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  selftest:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The harness claims Python 3.9+; test the floor and current versions.
+        # 3.9 runs on ubuntu-22.04 because setup-python ships no 3.9 build for
+        # the current ubuntu-latest image (Ubuntu 26.04).
+        include:
+          - python-version: "3.9"
+            os: ubuntu-22.04
+          - python-version: "3.11"
+            os: ubuntu-latest
+          - python-version: "3.12"
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run the results-harness selftest
+        run: python scripts/selftest_results_harness.py
+
+      - name: Check BENCHMARKS.md is rendered from committed runs
+        run: python scripts/render_benchmarks.py --check

@@ -75,15 +75,35 @@ the stronger architecture. That's the decision to carry into a full training run
 
 ---
 
+## Collected runs
+
+Every measured run under `benchmarks/<run_id>/results.json`, newest last. The proof runs above are
+migrated here as committed artifacts (accepted-length only — no serving throughput yet). This index
+and the serving tables further down are **generated** by the results harness
+([`benchmarks/README.md`](benchmarks/README.md)); don't hand-edit between the `<!-- harness:* -->`
+markers — run `python scripts/render_benchmarks.py` instead.
+
+<!-- harness:runs:start -->
+| Run | Date | Drafter | Mean accepted len | Mean acceptance | Serving | Greedy-eq |
+|---|---|---|---|---|---|---|
+| `2026-07-11-proof-dspark-block8-nano` | 2026-07-11 | dspark | 1.245 | — | — | — |
+| `2026-07-11-proof-eagle3-ttt7-nano` | 2026-07-11 | eagle3 | 1.146 | — | — | — |
+<!-- harness:runs:end -->
+
+---
+
 ## Serving throughput (format for a full run — not yet measured)
 
 Everything below is the reporting shape a **production** run should fill: end-to-end decode tok/s with
 and without the draft, at length and under concurrency. A trained draft's serving speedup tracks its
 accepted length, so with proof-level acceptance (~1.25) the speedup would be small (~1.25×) and isn't
-worth publishing as a headline — that's why these are blank until a real training run lands.
+worth publishing as a headline — that's why these are blank until a real training run lands. The
+tables are rendered from the most recent run that carries serving measurements; until one does, they
+stay em-dashes.
 
 ### Run configuration (fill for every result set)
 
+<!-- harness:config:start -->
 - **Target model / checkpoint:** `nvidia/NVIDIA-Nemotron-3-Nano` (stock)
 - **Draft:** trained DSpark draft — checkpoint + the config under `configs/`
 - **Hardware:** N× DGX Spark (GB10, 128 GB unified), TP=_, interconnect _
@@ -92,17 +112,21 @@ worth publishing as a headline — that's why these are blank until a real train
 - **Speculative config:** DSpark, `block_size`=_, `num_draft_layers`=_, `target_layer_ids`=_
 - **Limits:** `max-model-len`=_, `max-num-seqs`=_, `gpu-memory-utilization`=_
 - **Mode:** thinking on/off; warmed runs
+<!-- harness:config:end -->
 
 ### Headline — draft vs no-draft
 
-| Workload | Acceptance | Accepted len | Decode t/s (no draft) | Decode t/s (DSpark) | Speedup |
+<!-- harness:headline:start -->
+| Workload | Acceptance | Accepted len | Decode t/s (no draft) | Decode t/s (draft) | Speedup |
 |---|---|---|---|---|---|
 | Code | — | — | — | — | — |
 | Mixed | — | — | — | — | — |
 | Agentic / tool-calling | — | — | — | — | — |
+<!-- harness:headline:end -->
 
 ### Single request (pp_ / tg_)
 
+<!-- harness:single-request:start -->
 | Context | Prefill t/s | Decode t/s | TTFT | Acceptance |
 |---|---|---|---|---|
 | 0 | — | — | — | — |
@@ -110,15 +134,18 @@ worth publishing as a headline — that's why these are blank until a real train
 | 256K | — | — | — | — |
 | 512K | — | — | — | — |
 | 1M | — | — | — | — |
+<!-- harness:single-request:end -->
 
 ### Concurrency (pp_ / tg_)
 
+<!-- harness:concurrency:start -->
 | Config | Depth | Prefill t/s | Decode t/s | TTFT |
 |---|---|---|---|---|
 | c1 | d0 | — | — | — |
 | c2 | d0 | — | — | — |
 | c4 | d0 | — | — | — |
 | c1 | d4K | — | — | — |
+<!-- harness:concurrency:end -->
 
 Report aggregate and per-stream tok/s. `max-model-len` is a per-request ceiling and `max-num-seqs` a
 concurrency cap over a **shared** KV pool — the real limit is `sum(live tokens) ≤ pool size`.
@@ -130,10 +157,12 @@ concurrency cap over a **shared** KV pool — the real limit is `sum(live tokens
 Speculative decoding is **lossless with respect to the target**, so the only quality claim to make is
 that it matches the no-draft baseline. Verify that, then report task scores for context:
 
+<!-- harness:quality:start -->
 - **Greedy-equivalence check (required):** draft-on output == draft-off output on a fixed prompt set
   under greedy decoding. This must hold — if it doesn't, the spec-decode wiring is wrong.
-- **tool-eval-bench:** _ /100 (with category breakdown)
-- **IFEval:** instruction-level _% / prompt-level _%
+- **tool-eval-bench:** — /100 (with category breakdown)
+- **IFEval:** instruction-level — / prompt-level —
+<!-- harness:quality:end -->
 
 ---
 

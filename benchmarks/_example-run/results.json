@@ -1,0 +1,56 @@
+{
+  "schema_version": "1",
+  "synthetic": true,
+  "run_id": "_example-run",
+  "date": "2026-01-01",
+  "config": {
+    "drafter": "dspark",
+    "target_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+    "target_checkpoint": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B@stock",
+    "draft_checkpoint": "~/checkpoints/deepspec/dspark_block8_nemotron_nano/step_12000",
+    "draft_config_file": "configs/dspark_nemotron_nano.py",
+    "hardware": "2x DGX Spark (GB10, 128 GB unified)",
+    "tp": 1,
+    "interconnect": "ConnectX (example)",
+    "engine": "vLLM 0.0.0-example",
+    "kv_cache_dtype": "fp8",
+    "speculative": {"block_size": 7, "num_draft_layers": 5, "target_layer_ids": [8, 20, 32, 44, 52]},
+    "limits": {"max_model_len": 131072, "max_num_seqs": 32, "gpu_memory_utilization": 0.9},
+    "thinking": false,
+    "warmed": true,
+    "notes": "SYNTHETIC EXAMPLE DATA -- fabricated numbers used only to exercise the results harness selftest. Do NOT cite. Not a real measurement."
+  },
+  "greedy_equivalence": {"checked": true, "passed": true, "prompts": 64, "notes": "synthetic"},
+  "acceptance_eval": {
+    "source": "synthetic",
+    "benchmarks": {
+      "humaneval":     {"acceptance": 0.72, "accepted_length": 3.4, "samples": 164},
+      "mbpp":          {"acceptance": 0.70, "accepted_length": 3.2, "samples": 500},
+      "livecodebench": {"acceptance": 0.66, "accepted_length": 3.0, "samples": 400},
+      "gsm8k":         {"acceptance": 0.61, "accepted_length": 2.7, "samples": 1319},
+      "math500":       {"acceptance": 0.59, "accepted_length": 2.6, "samples": 500},
+      "aime25":        {"acceptance": 0.55, "accepted_length": 2.4, "samples": 30},
+      "mt-bench":      {"acceptance": 0.58, "accepted_length": 2.5, "samples": 80},
+      "alpaca":        {"acceptance": 0.60, "accepted_length": 2.6, "samples": 805},
+      "arena-hard-v2": {"acceptance": 0.57, "accepted_length": 2.5, "samples": 500}
+    }
+  },
+  "serving": {
+    "headline": {
+      "code":  {"decode_tps_no_draft": 42.0, "decode_tps_draft": 108.0},
+      "mixed": {"decode_tps_no_draft": 42.0, "decode_tps_draft": 86.0}
+    },
+    "single_request": [
+      {"context": 0,       "prefill_tps": 2200.0, "decode_tps": 108.0, "ttft_ms": 55.0,  "acceptance": 0.71},
+      {"context": 131072,  "prefill_tps": 1800.0, "decode_tps": 95.0,  "ttft_ms": 900.0, "acceptance": 0.68}
+    ],
+    "concurrency": [
+      {"concurrency": 1, "depth": "d0", "prefill_tps": 2200.0, "decode_tps": 108.0, "ttft_ms": 55.0},
+      {"concurrency": 4, "depth": "d0", "prefill_tps": 2600.0, "decode_tps": 300.0, "ttft_ms": 70.0}
+    ]
+  },
+  "quality": {
+    "tool_eval_bench": {"score": 61.0, "by_category": {"retrieval": 65.0, "math": 58.0}},
+    "ifeval": {"instruction_pct": 0.0, "prompt_pct": 0.0}
+  }
+}

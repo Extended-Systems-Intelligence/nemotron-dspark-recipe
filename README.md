@@ -42,11 +42,17 @@ Nemotron so you can train either and benchmark them head-to-head ([`BENCHMARKS.m
 DSpark adds a semi-autoregressive draft + load-aware verification; EAGLE-3 is the established
 autoregressive baseline. Which one wins on your target and workload is an empirical question.
 | [`scripts/`](./scripts/) | Thin wrappers over DeepSpec's pipeline with the Nemotron target and NVIDIA-cloud-friendly defaults. |
-| [`BENCHMARKS.md`](./BENCHMARKS.md) | First measured results — the DSpark-vs-EAGLE-3 acceptance head-to-head (proof run) — plus the reporting format for a full production run (serving tok/s, long-context, concurrency). |
+| [`BENCHMARKS.md`](./BENCHMARKS.md) | First measured results — the DSpark-vs-EAGLE-3 acceptance head-to-head (proof run) — plus the reporting format and auto-generated tables for a full production run (serving tok/s, long-context, concurrency). |
+| [`benchmarks/`](./benchmarks/) | The results harness: schema, workload mapping, the collect/render scripts that turn an eval run into the committed `BENCHMARKS.md` tables, and the proof runs as committed artifacts. See [`benchmarks/README.md`](./benchmarks/README.md). |
 
 ## Quickstart
 
 ```bash
+# 0. From your clone of THIS recipe repo, remember where it is — the stage-1-3 wrapper
+#    scripts run from inside the DeepSpec checkout, but the stage-4 reporting scripts and
+#    the committed results live here.
+RECIPE=$(pwd)
+
 # 1. Get DeepSpec and install it
 git clone https://github.com/deepseek-ai/DeepSpec && cd DeepSpec
 python -m pip install -r requirements.txt
@@ -57,10 +63,19 @@ python -m pip install -r requirements.txt
 #    - add NemotronDSparkTrainer to deepspec/trainer/
 #    - copy configs/dspark_nemotron_nano.py into config/dspark/
 
-# 3. Run the three stages (read GUIDE.md first — especially the storage warning)
-bash scripts/01_prepare_data.sh
-bash scripts/02_train.sh
-bash scripts/03_eval.sh
+# 3. Run the stages from the DeepSpec checkout (read GUIDE.md first — storage warning)
+bash "$RECIPE"/scripts/01_prepare_data.sh
+bash "$RECIPE"/scripts/02_train.sh
+bash "$RECIPE"/scripts/03_eval.sh | tee eval_table.txt   # DeepSpec eval prints a TABLE, not JSON
+
+# 4. Record the run in the recipe repo, where results are committed (see benchmarks/README.md).
+#    DeepSpec's eval.py prints a human-readable table (and accept_length to TensorBoard) — it does
+#    not emit JSON — so turn its per-task acceptance / accepted-length into a small JSON report,
+#    then collect + render:
+cd "$RECIPE"
+python scripts/collect_results.py --print-template > my_run.json   # fill in config + any serving numbers
+# write report.json: {"humaneval": {"accepted_length": 3.1, "acceptance": 0.78}, ...}
+bash scripts/04_report.sh my_run.json report.json
 ```
 
 Read [`GUIDE.md`](./GUIDE.md) before running anything — the target-cache stage produces a
@@ -82,7 +97,8 @@ Nemotron models are *"Licensed by NVIDIA Corporation under the NVIDIA Nemotron M
 
 Issues and PRs welcome — particularly benchmark results, corrected `target_layer_ids` for
 specific Nemotron checkpoints, and fixes to the draft-config dimension mapping. If you train a
-checkpoint with this recipe, please open an issue with your accepted-length numbers and setup.
+checkpoint with this recipe, please open an issue with your accepted-length numbers and setup,
+or contribute a run via the results harness ([`benchmarks/README.md`](./benchmarks/README.md)).
 
 ## Discussion
 
